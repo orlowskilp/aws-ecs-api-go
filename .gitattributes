@@ -1,0 +1,6 @@
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/.github export-ignore
+/.vscode export-ignore
+/.devcontainer export-ignore
+/.dockerignore export-ignore
