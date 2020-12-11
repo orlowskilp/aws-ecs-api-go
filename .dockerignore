@@ -1,0 +1,13 @@
+**/.dockerignore
+**/.devcontainer
+**/.env
+**/.git
+**/.gitignore
+**/.gitattributes
+**/.github
+**/.vs
+**/.vscode
+**/Dockerfile*
+cfn
+README.md
+VERSION
