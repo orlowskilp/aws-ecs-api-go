@@ -21,6 +21,7 @@ RUN useradd -ms /bin/bash ${USERNAME} && \
     go get -v github.com/go-delve/delve/cmd/dlv && \
 # Install project-specific dependencies
     go get -v github.com/gin-gonic/gin && \
+    go get -v github.com/stretchr/testify/assert && \
 # Move files to user directory
     cp -r /root/go /home/${USERNAME} && \
     chown -R ${USERNAME}. /home/${USERNAME}/go
