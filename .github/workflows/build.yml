@@ -6,6 +6,7 @@ env:
   AWS_DEFAULT_REGION: ap-southeast-1
   AWS_DEFAULT_OUTPUT: json
   SERVICE_NAME: sampleapi
+  SERVICE_PORT: 8080
   SERVICE_VERSION: $(cat ./VERSION)
   TARBALL_NAME: tarball.tar.gz
 
@@ -106,10 +107,37 @@ jobs:
         run: tar xzf ${{ env.TARBALL_NAME }} --strip 1
 
       - name: Build container
+        env:
+          IMAGE_TAG: ${{ secrets.ORG_DOMAIN }}/${{ env.SERVICE_NAME }}
         run: |
           docker build -t \
-            ${{ secrets.ORG_NAME }}/${{ env.SERVICE_NAME }} .
+            ${{ secrets.ORG_DOMAIN }}/${{ env.SERVICE_NAME }} \
+            --build-arg PORT=${{ env.SERVICE_PORT }} \
+            --build-arg NAME=${{ env.SERVICE_NAME }} \
+            --build-arg VERSION=${{ env.SERVICE_VERSION }} \
+            .
 
-      - name: Deploy to ECR
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Login to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Tag and deploy to ECR
+        env:
+          IMAGE_TAG: ${{ secrets.ORG_DOMAIN }}/${{ env.SERVICE_NAME }}
+          ECR_IMAGE: ${{ secrets.AWS_ACCOUNT_NO }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ secrets.ORG_DOMAIN }}/${{ env.SERVICE_NAME }}
         run: |
-          echo "Deploy to ECR"
+          docker tag ${{ env.IMAGE_TAG }} ${{ env.ECR_IMAGE }}:${GITHUB_SHA}
+          docker tag ${{ env.IMAGE_TAG }} ${{ env.ECR_IMAGE }}:latest
+          docker push ${{ env.ECR_IMAGE }}:${GITHUB_SHA}
+          docker push ${{ env.ECR_IMAGE }}:latest
+
+      - name: Logout of AWS ECR
+        if: always()
+        run: docker logout ${{ steps.login-ecr.outputs.registry }}
