@@ -1,0 +1,27 @@
+name: Quick check
+
+on:
+  push:
+    branches-ignore:
+      - master
+      - staging
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v2
+
+      - name: Fetch dependencies
+        run: |
+          go get -d -t -v ./...
+
+      - name: Build
+        run: |
+          go build
+
+      - name: Run unit tests
+        run: |
+          go test ./...
