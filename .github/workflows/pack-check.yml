@@ -1,0 +1,28 @@
+name: Check Docker
+
+on:
+  push:
+    branches-ignore:
+      - master
+      - staging
+
+env:
+  SERVICE_NAME: sampleapi
+  SERVICE_PORT: 8080
+  SERVICE_VERSION: $(cat ./VERSION)
+
+jobs:
+  build-and-test:
+    name: Build container
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v2
+
+      - name: Check container build
+        run: |
+          docker build \
+            --build-arg PORT=${{ env.SERVICE_PORT }} \
+            --build-arg NAME=${{ env.SERVICE_NAME }} \
+            --build-arg VERSION=${{ env.SERVICE_VERSION }} \
+            .

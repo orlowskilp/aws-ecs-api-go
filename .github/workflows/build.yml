@@ -1,6 +1,16 @@
 name: Build and Deploy
 
-on: [push, pull_request]
+on: 
+  push:
+    branches:
+      - master
+      - staging
+      - cicd-*
+  pull_request:
+    branches:
+      - master
+      - staging
+      - cicd-*
 
 env:
   AWS_DEFAULT_REGION: ap-southeast-1
