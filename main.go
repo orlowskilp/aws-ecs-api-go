@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"strconv"
+
+	"github.com/orlowskilp/api-go-aws-ecs/pkg/router"
 )
 
 const defaultPort string = "8080"
@@ -30,7 +32,7 @@ func main() {
 		portString = strconv.Itoa(port)
 	}
 
-	router := SetupRouter()
+	router := router.SetupRouter()
 	router.Run(":" + portString)
 	log.Printf("Started server at port %s", portString)
 }

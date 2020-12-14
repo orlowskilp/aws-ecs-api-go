@@ -9,7 +9,7 @@ RUN go install -v ./...
 # ==== Publish stage ====
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
-COPY --from=builder /go/bin/app /app
+COPY --from=builder /go/bin/api-go-aws-ecs /app
 
 # Define port and labels, these arguments should be
 # overridden during build
