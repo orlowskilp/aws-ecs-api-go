@@ -1,4 +1,4 @@
-package main
+package router
 
 import (
 	"io/ioutil"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/orlowskilp/aws-ecs-api-go/pkg/sys"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +24,7 @@ func TestGetKernelMethod_NoParamsReqd_ReturnStatus200(t *testing.T) {
 	// Assert
 	assert.Equal(t, 200, httpResponse.Code, "Expected status code 200")
 	// Expected value should be hard-coded
-	assert.Equal(t, GetKernelInfo(), string(actualResponseBody))
+	assert.Equal(t, sys.GetKernelInfo(), string(actualResponseBody))
 }
 
 func TestGetHostnameMethod_NoParamsReqd_ReturnStatus200(t *testing.T) {
@@ -40,5 +41,5 @@ func TestGetHostnameMethod_NoParamsReqd_ReturnStatus200(t *testing.T) {
 	// Assert
 	assert.Equal(t, 200, httpResponse.Code, "Expected status code 200")
 	// Expected value should be hard-coded
-	assert.Equal(t, GetHostname(), string(actualResponseBody))
+	assert.Equal(t, sys.GetHostname(), string(actualResponseBody))
 }

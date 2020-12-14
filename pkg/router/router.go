@@ -1,19 +1,20 @@
-package main
+package router
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/orlowskilp/aws-ecs-api-go/pkg/sys"
 )
 
 // GetKernelMethod handles GET for /kernel
 func GetKernelMethod(ctx *gin.Context) {
-	ctx.String(http.StatusOK, GetKernelInfo())
+	ctx.String(http.StatusOK, sys.GetKernelInfo())
 }
 
 // GetHostnameMethod handles GET for /hostname
 func GetHostnameMethod(ctx *gin.Context) {
-	ctx.String(http.StatusOK, GetHostname())
+	ctx.String(http.StatusOK, sys.GetHostname())
 }
 
 // SetupRouter registers API endpoints and returns a router instance
