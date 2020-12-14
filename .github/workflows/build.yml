@@ -13,6 +13,9 @@ env:
   SERVICE_NAME: sampleapi
   SERVICE_PORT: 8080
   SERVICE_VERSION: $(cat ./VERSION)
+  AWS_ECS_TASK_NAME: sampleapi-ecs-task
+  AWS_ECS_SERVICE_NAME: sampleapi-ecs-service
+  AWS_ECS_CLUSTER_NAME: sampleapi-ecs-cluster
   TARBALL_NAME: tarball.tar.gz
 
 jobs:
@@ -146,3 +149,45 @@ jobs:
       - name: Logout of AWS ECR
         if: always()
         run: docker logout ${{ steps.login-ecr.outputs.registry }}
+
+  put-in-ecs:
+    name: Deploy to ECS
+    runs-on: ubuntu-18.04
+    needs: put-in-ecr
+    steps:
+      - name: Prepare environment variables
+        run: |
+          echo "ECR_IMAGE_TAG=${GITHUB_SHA}" >> ${GITHUB_ENV}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Download AWS ECS task definition
+        env:
+          TASK_DEFINITION_ARN: arn:aws:ecs:${{ env.AWS_DEFAULT_REGION }}:${{ secrets.AWS_ACCOUNT_NO }}:task-definition/${{ env.AWS_ECS_TASK_NAME }}
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.TASK_DEFINITION_ARN }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Update container image in AWS ECS task definition
+        env:
+          ECR_IMAGE: ${{ secrets.AWS_ACCOUNT_NO }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ secrets.ORG_DOMAIN }}/${{ env.SERVICE_NAME }}
+        id: update-task-image
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.SERVICE_NAME }}-container
+          image: ${{ env.ECR_IMAGE }}:${{ env.ECR_IMAGE_TAG }}
+
+      - name: Deploy AWS ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.update-task-image.outputs.task-definition }}
+          service: ${{ env.AWS_ECS_SERVICE_NAME }}
+          cluster: ${{ env.AWS_ECS_CLUSTER_NAME }}
+          wait-for-service-stability: false
