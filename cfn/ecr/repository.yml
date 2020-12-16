@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: ECR repository for API container images
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+        - Label:
+            default: IAM policy and user parameters
+          Parameters:
+            - ImageRepositoryName
+            - RepositoryOwner
+    ParameterLabels:
+      ImageRepositoryName:
+        default: Name of repository
+      RepositoryOwner:
+        default: Name of repository owner
+
+Parameters:
+  ImageRepositoryName:
+    Type: String
+    Default: my-domain.com/my-repository
+    MinLength: 1
+    MaxLength: 64
+    Description: Name of container image repository
+
+  RepositoryOwner:
+    Type: String
+    Default: me
+    MinLength: 1
+    MaxLength: 64
+    Description: Owner (stored in tags)
+
+
+Resources:
+  ImageRepository:
+    Type: AWS::ECR::Repository
+    Properties: 
+      ImageTagMutability: MUTABLE
+      RepositoryName: !Ref ImageRepositoryName
+      Tags:
+        - Key: Name
+          Value: !Ref ImageRepositoryName
+        - Key: Owner
+          Value: !Ref RepositoryOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+Outputs:
+  RepositoryName:
+    Value:
+      !Join
+        - ''
+        - - !Ref AWS::AccountId
+          - ".dkr.ecr."
+          - !Ref AWS::Region
+          - ".amazonaws.com/"
+          - !Ref ImageRepository
+    Description: URI of created repository
