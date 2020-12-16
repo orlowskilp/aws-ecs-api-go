@@ -1,0 +1,32 @@
+name: Check IaC
+
+on:
+  push:
+    branches-ignore:
+      - master
+      - staging
+
+env:
+  AWS_DEFAULT_REGION: ap-southeast-1
+
+jobs:
+  build-and-test:
+    name: Validate CFN templates
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Validate CloudFormation templates
+        run: |
+          aws cloudformation validate-template --template-body file://cfn/iam/principal.yml
+          aws cloudformation validate-template --template-body file://cfn/s3/artifact-bucket.yml
+          aws cloudformation validate-template --template-body file://cfn/ecr/repository.yml
+          aws cloudformation validate-template --template-body file://cfn/ecs/cluster.yml
