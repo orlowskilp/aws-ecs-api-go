@@ -1,0 +1,305 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: ECS cluster with prerequisites
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+        - Label:
+            default: Cross-stack references
+          Parameters:
+            - RepositoryStackName
+        - Label:
+            default: ECS cluster parameters
+          Parameters:
+            - ClusterName
+            - ServiceName
+            - TaskName
+            - AppName
+            - ServicePort
+            - ECSTaskExecutionRoleName
+            - ClusterOwner
+
+    ParameterLabels:
+      RepositoryStackName:
+        default: ECR repository stack
+      ClusterName:
+        default: Cluster name
+      ServiceName:
+        default: Service name
+      TaskName:
+        default: Task name
+      AppName:
+        default: Application name
+      ServicePort:
+        default: Service port
+      ECSTaskExecutionRoleName:
+        default: Name of ECS task execution role
+      ClusterOwner:
+        default: Name of cluster owner
+
+Parameters:
+  RepositoryStackName:
+    Type: String
+    Default: ecr-repository
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of stack with ECR repository (for cross-stack reference)
+
+  ClusterName:
+    Type: String
+    Default: sampleapi-ecs-cluster
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of ECS cluster (for ECS)
+
+  ServiceName:
+    Type: String
+    Default: sampleapi-ecs-service
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of ECS service in cluster (to identify services in ECS cluster)
+
+  TaskName:
+    Type: String
+    Default: sampleapi-ecs-task
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of task definition in service (to identify tasks in ECS service)
+
+  AppName:
+    Type: String
+    Default: sampleapi
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of the application running in container (to label container in task definition)
+
+  ServicePort:
+    Type: Number
+    Default: 8080
+    MinValue: 1
+    MaxValue: 65535
+    Description: Port on which the application listens (to set port mappings)
+
+  ECSTaskExecutionRoleName:
+      Type: String
+      Default: ecs-task-exec-role
+      MinLength: 1
+      MaxLength: 32
+      Description: Name of ECS task execution role (for IAM role name)
+
+  ClusterOwner:
+    Type: String
+    Default: me
+    MinLength: 1
+    MaxLength: 64
+    Description: Owner (stored in tags)
+
+Resources:
+# VPC resources
+  ClusterVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-vpc
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  ClusterVPCIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-vpc-igw
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  ClusterVPCIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref ClusterVPCIGW
+      VpcId: !Ref ClusterVPC
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        !Select
+        - 0
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: 10.0.0.0/16
+      MapPublicIpOnLaunch: "true"
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-public-sn
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+      VpcId: !Ref ClusterVPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ClusterVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-public-sn-rt
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  RoutePublicDefault:
+    DependsOn:
+    - ClusterVPCIGWAttachment
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ClusterVPCIGW
+
+  PublicRTSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public access on service port
+      VpcId: !Ref ClusterVPC
+      SecurityGroupIngress:
+      - Description: Access on service port
+        FromPort: !Ref ServicePort
+        ToPort: !Ref ServicePort
+        IpProtocol: "tcp"
+        CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-sg
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+# IAM resources
+  ECSTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref ECSTaskExecutionRoleName
+      Description: Task execution role for ECS tasks
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+       - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+# ECS resources
+  ECSTaskDefinition:
+    DependsOn:
+    - ECSTaskExecutionRole
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      ContainerDefinitions: 
+        - Name: !Sub ${AppName}-container
+          Image:
+            Fn::ImportValue:
+              !Sub ${RepositoryStackName}-LatestImageUri
+          Command:
+            - /app
+          WorkingDirectory: /
+          Cpu: 0
+          MemoryReservation: 128
+          PortMappings:
+            - ContainerPort: !Ref ServicePort
+              HostPort: !Ref ServicePort
+              Protocol: tcp
+          Essential: true
+      Family: !Ref TaskName
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      RequiresCompatibilities:
+      - FARGATE
+      NetworkMode: awsvpc
+      Cpu: 256
+      Memory: 512
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  ECSCluster:
+    DependsOn:
+    - ClusterVPC
+    - PublicRouteTable
+    - ServiceSecurityGroup
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  ECSService: 
+    DependsOn:
+    - ECSCluster
+    - ECSTaskDefinition
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Ref ServiceName
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PublicSubnet
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          AssignPublicIp: ENABLED
+      DesiredCount: 2
+      TaskDefinition: !Ref ECSTaskDefinition
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+        - Key: Owner
+          Value: !Ref ClusterOwner
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+Outputs:
+  ECSClusterArn:
+    Description: ARN of ECS cluster
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSClusterArn
+
+  ECSTaskExecutionRoleArn:
+    Description: ARN of ECS cluster
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSTaskExecutionRoleArn
