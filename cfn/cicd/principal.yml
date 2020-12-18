@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: IAM user and policy for sampleapi CI/CD pipeline
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+        - Label:
+            default: Cross-stack references
+          Parameters:
+            - ArtifactS3BucketStackName
+            - ECRRepositoryStackName
+        - Label:
+            default: ECS cluster parameters
+          Parameters:
+            - ClusterName
+            - ServiceName
+            - AppName
+            - ECSTaskExecutionRoleName
+            - ResourceOwner
+
+    ParameterLabels:
+      ArtifactS3BucketStackName:
+        default: Name of stack with artifact bucket
+      ECRRepositoryStackName:
+        default: Name of stack with container image repository
+      ClusterName:
+        default: Name of ECS cluster
+      ServiceName:
+        default: Name of service in ECS cluster
+      AppName:
+        default: Name of application running in container
+      ECSTaskExecutionRoleName:
+        default: Name of ECS task execution role
+      ResourceOwner:
+        default: Name of owner
+
+Parameters:
+  ArtifactS3BucketStackName:
+    Type: String
+    Default: artifact-bucket
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of stack with S3 artifact bucket (for cross-stack reference)
+
+  ECRRepositoryStackName:
+    Type: String
+    Default: ecr-repository
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of stack with ECR repository (for cross-stack reference)
+
+  ClusterName:
+    Type: String
+    Default: sampleapi-ecs-cluster
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of ECS cluster (for IAM policy)
+
+  ServiceName:
+    Type: String
+    Default: sampleapi-ecs-service
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of ECS service in cluster (for IAM policy)
+
+  AppName:
+    Type: String
+    Default: sampleapi
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of the application running in container (to name IAM resources)
+
+  ECSTaskExecutionRoleName:
+    Type: String
+    Default: ecs-task-exec-role
+    MinLength: 1
+    MaxLength: 32
+    Description: Name of ECS task execution role (for IAM role name)
+
+  ResourceOwner:
+    Type: String
+    Default: me
+    MinLength: 1
+    MaxLength: 64
+    Description: Owner (stored in tags)
+
+Resources:
+  CICDUser:
+    Type: AWS::IAM::User
+    Properties:
+      Path: /
+      UserName: !Sub ${AppName}-cicd-user
+      Tags:
+        - Key: Name
+          Value: !Sub ${AppName}-cicd-user
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  CICDPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ${AppName}-cicd-policy
+      Description: Allows CI/CD pipeline access S3, ECR and ECS resources
+      Users:
+        - !Ref CICDUser
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Sid: ListObjectsInBucket
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              Fn::ImportValue:
+                !Sub ${ArtifactS3BucketStackName}-ArtifactS3BucketArn
+          - Sid: PutObjectsIntoBucket
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource: !Join
+              - ''
+              - - Fn::ImportValue:
+                    !Sub ${ArtifactS3BucketStackName}-ArtifactS3BucketArn
+                - /*
+          - Sid: GetAuthorizationToken
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+            Resource: "*"
+          - Sid: ManageRepositoryContents
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:GetRepositoryPolicy
+              - ecr:DescribeRepositories
+              - ecr:ListImages
+              - ecr:DescribeImages
+              - ecr:BatchGetImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+            Resource:
+              Fn::ImportValue:
+                !Sub ${ECRRepositoryStackName}-ImageRepositoryArn
+          - Sid: AccessTaskDefinitions
+            Effect: Allow
+            Action:
+              - ecs:ListClusters
+              - ecs:ListServices
+              - ecs:ListTaskDefinitions
+              - ecs:ListTaskDefinitionFamilies
+              - ecs:DescribeTaskDefinition
+              - ecs:RegisterTaskDefinition
+              - ecs:DeregisterTaskDefinition
+            Resource: "*"
+          - Sid: PassRolesInTaskDefinition
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${ECSTaskExecutionRoleName}
+          - Sid: DeployService
+            Effect: Allow
+            Action:
+              - ecs:UpdateService
+              - ecs:DescribeServices
+            Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ClusterName}/${ServiceName}
+          - Sid: ValidateCloudFormationTemplates
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+            Resource: "*"
+
+Outputs:
+  CICDUser:
+    Description: User for CI/CD to operate as
+    Value: !Ref CICDUser
+    Export:
+      Name: !Sub ${AWS::StackName}-CICDUser
+
+  ClusterName:
+    Description: Name of the ECS cluster
+    Value: !Ref ClusterName
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterName
+
+  ServiceName:
+    Description: Name of the service to run in the ECS cluster
+    Value: !Ref ServiceName
+    Export:
+      Name: !Sub ${AWS::StackName}-ServiceName
+
+  ECSTaskExecutionRole:
+    Description: Execution role used by ECS tasks
+    Value: !Ref ECSTaskExecutionRoleName
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSExecRole
